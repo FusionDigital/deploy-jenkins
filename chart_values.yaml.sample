@@ -1,0 +1,140 @@
+---
+# https://github.com/jenkinsci/helm-charts/blob/main/charts/jenkins/values.yaml
+persistence:
+  enabled: true
+  size: "3Gi"
+
+controller:
+  taglabel: "jdk17"
+  tag: "2.452.1-jdk17"
+  imagePullPolicy: "Always"
+  image: "jenkins/jenkins"
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      kubernetes.io/ingress.class: nginx
+      kubernetes.io/tls-acme: "false"
+    hostName: test.devopsdennis.com
+    jenkinsUrlProtocol: "https"
+    jenkinsUrl: "${JENKINS_URL}"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "512Mi"
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+  overwritePlugins: true
+
+  installPlugins:
+    - kubernetes:4219.v40ff98cfb_d6f
+    - workflow-aggregator:2.6
+    - git:5.2.2
+    - configuration-as-code:1775.v810dc950b_514
+    - github-oauth:597.ve0c3480fcb_d0
+    - github-branch-source:1789.v5b_0c0cea_18c3
+    - blueocean:1.27.12
+    - job-dsl:1.87
+    - matrix-auth:3.2.2
+  healthProbes: false
+  csrf:
+    defaultCrumbIssuer:
+      enabled: true
+      proxyCompatability: true
+      excludeClientIPFromCrumb: true
+
+  JCasC:
+    enabled: true
+    configScripts:
+      main-config: |
+        jenkins:
+          securityRealm:
+            github:
+              githubWebUri: "https://github.com"
+              githubApiUri: "https://api.github.com"
+              clientID: ""
+              clientSecret: ""
+              oauthScopes: "read:org,user:email"
+
+          authorizationStrategy:
+            globalMatrix:
+              permissions:
+                - "Overall/Read:anonymous"
+                - "Overall/Administer:authenticated"
+        credentials:
+          system:
+            domainCredentials:
+              - credentials:
+                - usernamepassword:
+                    username: ""
+                    password: ""
+                    id: "Docker_creds"
+                - gitHubApp:
+                    appID: ""
+                    description: "EKS jenkins GitHub app"
+                    id: "githubApp"
+                    privateKey: |
+
+                      -----BEGIN PRIVATE KEY-----
+                      -----END PRIVATE KEY-----
+      kube-config: |
+             jenkins:
+               clouds:
+               - kubernetes:
+                   name: "main-k8s-cluster"
+                   serverUrl: "https://kubernetes.default"
+                   skipTlsVerify: true
+                   namespace: "cicd"
+                   jenkinsUrl: "http://jenkins:8080/"
+                   jenkinsTunnel: "jenkins-agent:50000"
+agent:
+  image: "jenkins/inbound-agent"
+  tag: "latest-jdk17"
+
+additionalAgents:
+  dind:
+    podName: dind-agent
+    customJenkinsLables: dind-agent
+    image: somjing888/dind-client-jenkins-agent
+    tag: 1.0.0
+    envVars:
+      - name: DOCKER_HOST
+        value: "tcp://localhost:2375"
+    alwaysPullImage: true
+    yamlTemplate: |-
+      spec:
+         containers:
+           - name: dind-daemon
+             image: docker:dind
+             tag: latest
+             securityContext:
+               privileged: true
+             env:
+               - name: DOCKER_TLS_VERIFY
+                 value: ""
+             securityContext:
+               privileged: true
+             env:
+               - name: DOCKER_TLS_CERTDIR
+  kubectl:
+    podName: kubectl
+    customJenkinsLables: kubectl
+    image: bitnami/kubectl
+    tag: latest
+    envVars:
+      - name: DOCKER_HOST
+        value: "tcp://localhost:2375"
+    alwaysPullImage: true
+    yamlTemplate: |-
+      spec:
+        containers:
+          - name: kubectl
+            image: bitnami/kubectl:latest
+            command:
+              - "/bin/sh"
+              - "-c"
+              - "sleep 99d"
+            tty: true
+            securityContext:
+              runAsUser: 0
